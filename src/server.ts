@@ -43,9 +43,26 @@ function capabilitiesSummary(session: AppSession): string {
   );
 }
 
+/** 外部トリガで許可するアクション。 */
+const EXTERNAL_ACTIONS = ["capture", "toggleMode", "repeat", "cost", "diagnostics"] as const;
+type ExternalAction = (typeof EXTERNAL_ACTIONS)[number];
+
 class AwsQuizServer extends AppServer {
   /** sessionId → controller。onStop で確実に dispose するため保持する。 */
   private readonly controllers = new Map<string, QuizController>();
+  /** userId → controller。外部 HTTP トリガ (Rokid Ring 等) の宛先解決用。 */
+  private readonly byUser = new Map<string, QuizController>();
+
+  /**
+   * 外部入力 (Ring → スマホ自動化 → POST /ext/trigger) からコマンドを発火。
+   * 該当ユーザーのアクティブセッションが無ければ "no-session"。
+   */
+  triggerExternal(userId: string, action: ExternalAction): "ok" | "no-session" {
+    const controller = this.byUser.get(userId);
+    if (!controller) return "no-session";
+    void controller.external(action);
+    return "ok";
+  }
 
   protected override async onSession(
     session: AppSession,
@@ -95,6 +112,7 @@ class AwsQuizServer extends AppServer {
     });
     controller.start();
     this.controllers.set(sessionId, controller);
+    this.byUser.set(userId, controller);
 
     // backend 疎通を軽く確認してから挨拶 (落ちていれば warn だけ出す)
     const healthy = await backend.health().catch(() => false);
@@ -105,14 +123,58 @@ class AwsQuizServer extends AppServer {
     await controller.welcome();
   }
 
-  protected override async onStop(sessionId: string, _userId: string, reason: string): Promise<void> {
+  protected override async onStop(sessionId: string, userId: string, reason: string): Promise<void> {
     this.logger.info(`session stop ${sessionId}: ${reason}`);
     const controller = this.controllers.get(sessionId);
     if (controller) {
       controller.dispose();
       this.controllers.delete(sessionId);
+      // byUser がこのセッションを指していたら外す (新しいセッションが上書き済なら残す)。
+      if (this.byUser.get(userId) === controller) this.byUser.delete(userId);
     }
   }
+}
+
+/** express の Request/Response の必要部分だけを構造的に型付け (@types/express を足さないため)。 */
+interface MinimalReq {
+  header(name: string): string | undefined;
+  query: Record<string, unknown>;
+}
+interface MinimalRes {
+  status(code: number): MinimalRes;
+  json(body: unknown): void;
+}
+
+/**
+ * Rokid Ring 等の外部入力を受ける HTTP トリガを登録する (RING_TRIGGER_TOKEN 設定時のみ)。
+ *   POST /ext/trigger?user=<userId>&action=capture   (header: x-trigger-token: <token>)
+ * MentraOS の入力転送に依存せず、スマホ自動化 (Tasker/MacroDroid) から叩いて撮影を発火する。
+ */
+function registerRingTrigger(server: AwsQuizServer, token: string): void {
+  const app = server.getExpressApp();
+  app.post("/ext/trigger", (req: MinimalReq, res: MinimalRes) => {
+    const provided = req.header("x-trigger-token");
+    if (!provided || provided !== token) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const user = typeof req.query.user === "string" ? req.query.user : "";
+    const action = typeof req.query.action === "string" ? req.query.action : "capture";
+    if (!EXTERNAL_ACTIONS.includes(action as ExternalAction)) {
+      res.status(400).json({ error: `bad action (allowed: ${EXTERNAL_ACTIONS.join(", ")})` });
+      return;
+    }
+    if (!user) {
+      res.status(400).json({ error: "missing user" });
+      return;
+    }
+    const result = server.triggerExternal(user, action as ExternalAction);
+    if (result === "no-session") {
+      res.status(404).json({ error: "no active session for user" });
+      return;
+    }
+    res.json({ ok: true, action });
+  });
 }
 
 const server = new AwsQuizServer({
@@ -120,6 +182,11 @@ const server = new AwsQuizServer({
   apiKey: cfg.apiKey,
   port: cfg.port,
 });
+
+if (cfg.ringTriggerToken) {
+  registerRingTrigger(server, cfg.ringTriggerToken);
+  console.log("ring HTTP trigger enabled: POST /ext/trigger (token required)");
+}
 
 server.start().then(
   () => console.log(`AWS Quiz Glass listening on :${cfg.port} (backend=${cfg.visionBackendUrl})`),

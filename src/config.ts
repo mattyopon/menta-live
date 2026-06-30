@@ -28,6 +28,11 @@ export interface AppConfig {
   readonly autoLoopDelayMs: number;
   /** rate-limit 格下げ時に「ハイクで回答」等を読み上げるか。 */
   readonly announceFallback: boolean;
+  /**
+   * Rokid Ring 等の外部トリガ用 HTTP エンドポイント (POST /ext/trigger) を有効化する共有トークン。
+   * 未設定ならエンドポイントは登録しない (公開 URL に開けっ放しにしないための opt-in)。
+   */
+  readonly ringTriggerToken?: string;
   /** 撮影直後の即時キュー ("" で無効)。表示なし機の押下フィードバック。 */
   readonly captureCueText: string;
   /** 推論遅延時の安心キュー ("" で無効)。 */
@@ -106,6 +111,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
     defaultExamCode: pick(env, "DEFAULT_EXAM_CODE") ?? "SAA",
     autoLoopDelayMs: Number.isFinite(autoLoop) && autoLoop > 0 ? autoLoop : 0,
     announceFallback: pick(env, "ANNOUNCE_FALLBACK") !== "0",
+    ringTriggerToken: pick(env, "RING_TRIGGER_TOKEN"),
     captureCueText: cueOff(captureCueRaw) ? "" : (pick(env, "CAPTURE_CUE_TEXT") ?? "はい"),
     slowCueText: cueOff(slowCueRaw) ? "" : (pick(env, "SLOW_CUE_TEXT") ?? "確認中です"),
     slowCueAfterMs: Number.isFinite(slowAfter) && slowAfter > 0 ? slowAfter : 0,

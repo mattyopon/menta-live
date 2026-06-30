@@ -160,6 +160,28 @@ opus→haiku に格下げされた場合は「答えは、A。ハイクで回答
 
 ---
 
+## 6.5 Rokid Ring など外部トリガ（任意）
+
+Rokid 版は「テンプルタップ → 将来 RingTrigger」という設計だった（design.md §7.1）。Mentra Live
+ではアプリがクラウド側なので、Ring は**母艦スマホに BLE HID としてペアリング**し、その入力を HTTP で
+このアプリへ橋渡しする（MentraOS の入力転送に依存しない方式）。
+
+1. `.env` に `RING_TRIGGER_TOKEN=<秘密の文字列>` を設定（未設定ならエンドポイントは開かない）。
+2. アプリが `POST /ext/trigger` を公開する:
+   ```bash
+   curl -X POST "https://<your-ngrok>/ext/trigger?user=<userId>&action=capture" \
+        -H "x-trigger-token: <RING_TRIGGER_TOKEN>"
+   ```
+   `action` = `capture` / `toggleMode` / `repeat` / `cost` / `diagnostics`。`capture` は音声「撮影」や
+   グラスボタン短押しと同じ経路（`QuizController.external` → `QuizSession.onTrigger`）に合流する。
+3. スマホ自動化（Tasker / MacroDroid 等）で「**Ring のボタン → 上の URL を POST**」を作る。
+   - ⚠️ **Ring のボタンが Pixel 上でどのキー/イベントになるかは実測が必要**（Rokid 設計書と同じ。
+     端末側の HID 仕様は推測しない）。`getevent` や入力テストアプリで確認してから自動化に割り当てる。
+   - 単押し→`capture`、長押し→`toggleMode` のように割り当てると Rokid 版の Ring 計画に近づく。
+
+> ⚠️ まず確認すべき本命は「MentraOS が Ring の入力を `onButtonPress`/`onTouchEvent` として
+> アプリに転送してくれるか」（未確認）。転送されるならこの HTTP ブリッジは不要。docs.mentraglass.com で要確認。
+
 ## 7. プロジェクト構成
 
 ```

@@ -8,7 +8,7 @@
  * 一切反応しない (= 勝手に喋らない)。反応するのは明示コマンドとボタンだけ。
  */
 
-import { examListSpeech, recognizeCommand } from "../exams/examMatcher.js";
+import { type Command, examListSpeech, recognizeCommand } from "../exams/examMatcher.js";
 import { DISPLAY } from "../exams/examPrompts.js";
 import type { Logger, Trigger, VoiceIO } from "../io/ports.js";
 import type { VisionBackend } from "../vision/visionBackend.js";
@@ -76,6 +76,20 @@ export class QuizController {
     const cmd = recognizeCommand(text);
     if (!cmd) return; // 未認識は無反応
     this.log.info(`command: ${cmd.kind} <- ${JSON.stringify(text)}`);
+    await this.dispatch(cmd);
+  }
+
+  /**
+   * 外部入力 (Rokid Ring 等 → スマホ自動化 → HTTP trigger) からコマンドを発火する。
+   * 音声/ボタンと同じ経路に合流させるため、ここでも dispatch を通す。
+   * 撮影/モード切替/もう一度 だけを許可 (試験選択など引数付きは音声で行う)。
+   */
+  async external(kind: "capture" | "toggleMode" | "repeat" | "cost" | "diagnostics"): Promise<void> {
+    this.log.info(`external command: ${kind}`);
+    await this.dispatch({ kind });
+  }
+
+  private async dispatch(cmd: Command): Promise<void> {
     switch (cmd.kind) {
       case "selectExam":
         this.session.setExam(cmd.code);
