@@ -24,8 +24,8 @@ import {
 import {
   CAMERA_FAIL_SPEECH,
   GENERIC_ERROR_SPEECH,
-  answerToSpeech,
   backendErrorToSpeech,
+  composeAnswerSpeech,
 } from "./speech.js";
 
 export type Phase = "idle" | "capturing" | "uploading" | "speaking" | "speakingError";
@@ -51,6 +51,11 @@ export interface QuizConfig {
   slowCueText?: string;
   /** slowCue を出すまでの待ち時間 (ms)。0 で無効。 */
   slowCueAfterMs?: number;
+  /**
+   * 要求モデルが rate-limit で格下げされた (opus/sonnet→haiku) とき、解答末尾に
+   * 「ハイクで回答」等を付すか。精度低下の合図。default true。
+   */
+  announceFallback?: boolean;
 }
 
 function isAbortError(e: unknown): boolean {
@@ -234,7 +239,12 @@ export class QuizSession {
 
     // 3) 解答読み上げ
     this.setPhase("speaking");
-    const speech = answerToSpeech(result.text);
+    const speech = composeAnswerSpeech(
+      result.text,
+      this.cfg.mode,
+      result.model,
+      this.cfg.announceFallback ?? true,
+    );
     this.lastAnswerSpeech = speech;
     this.log.info(
       `answer rid=${rid} text=${JSON.stringify(result.text)} model=${result.model} elapsed=${result.elapsedMs}ms`,

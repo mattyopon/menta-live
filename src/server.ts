@@ -19,10 +19,29 @@ import { QuizSession } from "./core/quizSession.js";
 import { MentraCamera } from "./mentra/mentraCamera.js";
 import { MentraTrigger } from "./mentra/mentraTrigger.js";
 import { MentraVoiceIO } from "./mentra/mentraVoiceIO.js";
-import { HttpVisionBackend } from "./vision/httpVisionBackend.js";
+import { createVisionBackend } from "./vision/createVisionBackend.js";
 
 const cfg = loadConfig();
-const backend = new HttpVisionBackend({ baseUrl: cfg.visionBackendUrl });
+const backend = createVisionBackend({
+  kind: cfg.visionBackendKind,
+  visionBackendUrl: cfg.visionBackendUrl,
+  anthropicApiKey: cfg.anthropicApiKey,
+  models: cfg.anthropicModels,
+  maxTokens: cfg.visionMaxTokens,
+  enableAwsKnowledgeMcp: cfg.enableAwsKnowledgeMcp,
+  awsKnowledgeMcpUrl: cfg.awsKnowledgeMcpUrl,
+});
+
+/** session.capabilities を「診断」用の読み上げ文へ。 */
+function capabilitiesSummary(session: AppSession): string {
+  const c = session.capabilities;
+  if (!c) return "デバイス情報はまだ取得できていません。少し待って、もう一度診断と言ってください。";
+  const yn = (b: boolean) => (b ? "あり" : "なし");
+  return (
+    `機種は ${c.modelName}。ディスプレイ ${yn(c.hasDisplay)}、カメラ ${yn(c.hasCamera)}、` +
+    `マイク ${yn(c.hasMicrophone)}、スピーカー ${yn(c.hasSpeaker)}、ボタン ${yn(c.hasButton)}。`
+  );
+}
 
 class AwsQuizServer extends AppServer {
   /** sessionId → controller。onStop で確実に dispose するため保持する。 */
@@ -61,11 +80,19 @@ class AwsQuizServer extends AppServer {
         captureCueText: cfg.captureCueText,
         slowCueText: cfg.slowCueText,
         slowCueAfterMs: cfg.slowCueAfterMs,
+        announceFallback: cfg.announceFallback,
       },
       logger: session.logger,
     });
 
-    const controller = new QuizController({ session: quiz, voice, trigger, backend, logger: session.logger });
+    const controller = new QuizController({
+      session: quiz,
+      voice,
+      trigger,
+      backend,
+      getDiagnostics: () => capabilitiesSummary(session),
+      logger: session.logger,
+    });
     controller.start();
     this.controllers.set(sessionId, controller);
 

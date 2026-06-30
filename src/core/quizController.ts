@@ -19,13 +19,15 @@ const HELP_SPEECH =
   "使い方です。問題に向けてボタンを短く押すと撮影して解答します。" +
   "試験を変えるには試験コードか名前を言ってください。" +
   "ボタン長押しで、高精度と節約モードを切り替えます。" +
-  "もう一度、コスト、一覧、と言うこともできます。";
+  "もう一度、コスト、一覧、診断、と言うこともできます。";
 
 export interface QuizControllerDeps {
   readonly session: QuizSession;
   readonly voice: VoiceIO;
   readonly trigger: Trigger;
   readonly backend: VisionBackend;
+  /** 「診断」で読み上げるデバイス能力サマリ (任意)。表示なし機の実機確認用。 */
+  readonly getDiagnostics?: () => string;
   readonly logger?: Logger;
 }
 
@@ -34,6 +36,7 @@ export class QuizController {
   private readonly voice: VoiceIO;
   private readonly trigger: Trigger;
   private readonly backend: VisionBackend;
+  private readonly getDiagnostics?: () => string;
   private readonly log: Logger;
   private readonly cleanups: Array<() => void> = [];
 
@@ -42,6 +45,7 @@ export class QuizController {
     this.voice = deps.voice;
     this.trigger = deps.trigger;
     this.backend = deps.backend;
+    this.getDiagnostics = deps.getDiagnostics;
     this.log = deps.logger ?? console;
   }
 
@@ -98,6 +102,9 @@ export class QuizController {
       case "listExams":
         await this.safeSpeak(examListSpeech());
         return;
+      case "diagnostics":
+        await this.onDiagnostics();
+        return;
       case "help":
         await this.safeSpeak(HELP_SPEECH);
         return;
@@ -112,6 +119,19 @@ export class QuizController {
   private async onToggleProfile(): Promise<void> {
     const profile = this.session.toggleProfile();
     await this.safeSpeak(profile === "high" ? "高精度モードにしました。" : "節約モードにしました。");
+  }
+
+  /**
+   * 「診断」: TTS セルフテスト + デバイス能力サマリ。
+   * 実機到着後に「スピーカーが鳴るか」「マイク/カメラ/ボタンが認識されているか」を確認する用。
+   */
+  private async onDiagnostics(): Promise<void> {
+    await this.safeSpeak(
+      "音声テストです。1、2、3。これが聞こえていれば、スピーカーは動作しています。",
+    );
+    if (this.getDiagnostics) {
+      await this.safeSpeak(this.getDiagnostics());
+    }
   }
 
   private async onCost(): Promise<void> {

@@ -12,14 +12,16 @@
 
 元 (Rokid) は **3 層**: `Android+HUD クライアント` → `FastAPI バックエンド (頭脳)` → `Anthropic Vision`。
 
-移植は **クライアント層だけを差し替える**。推論の頭脳（Anthropic 呼び出し / `request_id` dedup / `auth_mode` / AWS-knowledge MCP grounding / rate-limit fallback）は **既存の `backend/` (FastAPI) をそのまま再利用** する。
+移植は **クライアント層だけを差し替える**。推論の頭脳（Anthropic 呼び出し / `request_id` dedup / `auth_mode` / AWS-knowledge MCP grounding / rate-limit fallback）は **既存の `backend/` (FastAPI) をそのまま再利用** する（`VISION_BACKEND=http`、既定）。
+
+FastAPI を立てたくない場合は **`VISION_BACKEND=direct`**：`DirectAnthropicVisionBackend` が `@anthropic-ai/sdk` で Anthropic Vision を直叩きし、`inference.py` 相当（base64 画像、MCP コネクタ `mcp-client-2025-11-20`、opus→haiku の rate-limit fallback、60 秒 dedup、usage 集計）をこの Node プロセス内で完結させる（`ANTHROPIC_API_KEY` が必要。max_sub OAuth は direct では非対応）。
 
 | 観点 | Rokid 版 (ディスプレイ有) | Mentra Live 版 (表示なし) | 実装 |
 |---|---|---|---|
 | 問題提示 | 画面 + 音声 | — (撮影するだけ) | — |
 | トリガ | テンプルタップ (`KEYCODE_ENTER`) | **物理ボタン短押し** / 音声「撮影」 | `MentraTrigger` |
 | 撮影 | CameraX 1568×1176 JPEG | `session.camera.requestPhoto` 1080p | `MentraCamera` |
-| 推論 | FastAPI `/vision/session` | **同じ** FastAPI `/vision/session` | `HttpVisionBackend` |
+| 推論 | FastAPI `/vision/session` | **同じ** FastAPI、または Anthropic 直叩き | `HttpVisionBackend` / `DirectAnthropicVisionBackend` |
 | 解答提示 | HUD に記号表示 (5s) | **TTS で読み上げ** ("答えは、A") | `MentraVoiceIO` |
 | 試験選択 | `MenuActivity` 視覚メニュー | **音声** ("SAA" / "セキュリティ") | `QuizController` + `examMatcher` |
 | モード切替 | メニュー行 | **ボタン長押し** / 音声「高精度/節約」 | `QuizController` |
@@ -148,7 +150,11 @@ VISION_BACKEND_URL=http://localhost:8080 npm run sim
 | 「コスト」「料金」「いくら」 | セッションの API コストを読み上げ |
 | 「高精度」/「節約」 | api_key+opus / max_sub+haiku に切替（ボタン長押しでトグルも可） |
 | 「一覧」「リスト」 | 対応試験を読み上げ |
+| 「診断」「セルフテスト」 | TTS セルフテスト＋デバイス能力（カメラ/マイク/スピーカー/ボタン）読み上げ（実機確認用） |
 | 「ヘルプ」「使い方」 | 操作説明 |
+
+解答の読み上げは、単一は「答えは、A」、複数選択は数を先に言って「答えは2つ。AとC」。rate-limit で
+opus→haiku に格下げされた場合は「答えは、A。ハイクで回答」と注記（`ANNOUNCE_FALLBACK`）。
 
 > ASR の認識精度に依存するため、`src/exams/examMatcher.ts` の alias 追加が主なチューニングポイント。別言語 ASR への載せ替えもここを足すだけ。
 

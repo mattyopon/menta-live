@@ -28,6 +28,7 @@ test("recognizes command verbs", () => {
   assert.equal(recognizeCommand("コストは？")?.kind, "cost");
   assert.equal(recognizeCommand("高精度で")?.kind, "setMode");
   assert.equal(recognizeCommand("ヘルプ")?.kind, "help");
+  assert.equal(recognizeCommand("診断")?.kind, "diagnostics");
 });
 
 test("returns null for arbitrary speech (must not react)", () => {

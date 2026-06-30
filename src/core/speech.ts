@@ -18,8 +18,9 @@ export const GENERIC_ERROR_SPEECH = "通信エラーが発生しました。";
  * backend が返した解答記号 (result.text) を読み上げ文へ。
  *   ""   → 応答なし
  *   "?"  → 解けなかった (BASE prompt の規約: 問題が無い/解けない時は '?')
- *   "A"      → 「答えは、A」
- *   "A, C"   → 「答えは、A、C」(カンマを読点にして自然な間を作る)
+ *   "A"        → 「答えは、A」
+ *   "A, C"     → 「答えは2つ。AとC」(選択数を先に言って聞き取りやすくする)
+ *   "A, C, D"  → 「答えは3つ。A、C、D」
  */
 export function answerToSpeech(text: string): string {
   const t = text.trim();
@@ -27,9 +28,59 @@ export function answerToSpeech(text: string): string {
   if (t === "?") {
     return "解答できませんでした。問題が画面に写っているか確認して、もう一度撮影してください。";
   }
-  // "A, C" → "A、C": ASCII カンマを日本語読点へ寄せて TTS の間合いを整える
-  const spoken = t.replace(/\s*,\s*/g, "、");
-  return `答えは、${spoken}`;
+  // ASCII/日本語どちらの区切りでも分割。複数選択は数を先に言う。
+  const symbols = t.split(/\s*[,、]\s*/).filter((s) => s.length > 0);
+  if (symbols.length <= 1) return `答えは、${t}`;
+  // 2 つは「AとC」、3 つ以上は「A、C、D」で読む。
+  const joined = symbols.length === 2 ? symbols.join("と") : symbols.join("、");
+  return `答えは${symbols.length}つ。${joined}`;
+}
+
+/** モデル id を tier に正規化。 */
+export function modelTier(model: string): "haiku" | "sonnet" | "opus" | "unknown" {
+  const m = model.toLowerCase();
+  if (m.includes("haiku")) return "haiku";
+  if (m.includes("sonnet")) return "sonnet";
+  if (m.includes("opus")) return "opus";
+  return "unknown";
+}
+
+const TIER_RANK: Readonly<Record<string, number>> = { haiku: 1, sonnet: 2, opus: 3 };
+const TIER_SPOKEN: Readonly<Record<string, string>> = {
+  haiku: "ハイク",
+  sonnet: "ソネット",
+  opus: "オーパス",
+};
+
+/**
+ * 要求モデルより低位のモデルで回答された (= rate-limit fallback) ときの注記。
+ * 例: opus を要求したのに haiku で回答 → 「ハイクで回答」(精度が落ちた合図)。無ければ null。
+ */
+export function fallbackNote(requestedMode: string, resolvedModel: string): string | null {
+  const reqRank = TIER_RANK[requestedMode];
+  const resTier = modelTier(resolvedModel);
+  const resRank = TIER_RANK[resTier];
+  if (reqRank === undefined || resRank === undefined) return null;
+  if (resRank < reqRank) return `${TIER_SPOKEN[resTier]}で回答`;
+  return null;
+}
+
+/**
+ * 解答 + (任意で) fallback 注記をまとめた読み上げ文。
+ * announceFallback=true かつ実際に格下げされた場合のみ注記を付す。
+ */
+export function composeAnswerSpeech(
+  text: string,
+  requestedMode: string,
+  resolvedModel: string,
+  announceFallback: boolean,
+): string {
+  const base = answerToSpeech(text);
+  if (!announceFallback) return base;
+  const t = text.trim();
+  if (t === "" || t === "?") return base; // 解答が無いときは注記しない
+  const note = fallbackNote(requestedMode, resolvedModel);
+  return note ? `${base}。${note}` : base;
 }
 
 /** BackendError を読み上げ文へ (設計書 §5.1 のエラーマトリクスに対応)。 */

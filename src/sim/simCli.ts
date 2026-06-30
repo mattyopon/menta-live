@@ -18,8 +18,8 @@
 import { createInterface } from "node:readline";
 import { QuizController } from "../core/quizController.js";
 import { QuizSession } from "../core/quizSession.js";
+import { createVisionBackend } from "../vision/createVisionBackend.js";
 import type { AuthMode, InferenceMode } from "../vision/visionBackend.js";
-import { HttpVisionBackend } from "../vision/httpVisionBackend.js";
 import { FakeCamera, FakeTrigger, FakeVoiceIO } from "./fakeIO.js";
 
 function env(name: string, fallback: string): string {
@@ -28,7 +28,13 @@ function env(name: string, fallback: string): string {
 }
 
 const backendUrl = env("VISION_BACKEND_URL", "http://localhost:8080");
-const backend = new HttpVisionBackend({ baseUrl: backendUrl });
+const backendKind = process.env.VISION_BACKEND === "direct" ? "direct" : "http";
+const backend = createVisionBackend({
+  kind: backendKind,
+  visionBackendUrl: backendUrl,
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+  enableAwsKnowledgeMcp: process.env.ENABLE_AWS_KNOWLEDGE_MCP === "1",
+});
 
 let photoPath: string | null = null;
 
@@ -59,7 +65,7 @@ function banner(): void {
     [
       "",
       "── AWS Quiz Glass — Simulated CLI ─────────────────────────",
-      `  backend : ${backendUrl}`,
+      `  backend : ${backendKind === "direct" ? "direct (Anthropic)" : backendUrl}`,
       `  exam    : ${session.getConfig().examCode}  mode: ${session.getConfig().mode}/${session.getConfig().authMode}`,
       "  commands:",
       "    photo <path>   set the JPEG/PNG to 'capture'",

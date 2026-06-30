@@ -17,6 +17,7 @@ export type Command =
   | { readonly kind: "setMode"; readonly profile: "high" | "save" } // 明示指定
   | { readonly kind: "listExams" } // 試験一覧を読み上げ
   | { readonly kind: "help" } // 使い方を読み上げ
+  | { readonly kind: "diagnostics" } // 音声/デバイスのセルフテスト
   | { readonly kind: "stop" }; // 待機/終了
 
 /** NFKC 正規化 + 小文字化 + 記号/空白除去。全角英数や半角カナを吸収する。 */
@@ -116,6 +117,9 @@ export function recognizeCommand(text: string): Command | null {
   }
   if (/一覧|リスト|どんな試験|試験を教え/.test(raw) || /list/.test(n)) {
     return { kind: "listExams" };
+  }
+  if (/診断|セルフテスト|動作確認/.test(raw) || /diagnos|selftest/.test(n)) {
+    return { kind: "diagnostics" };
   }
   if (/ヘルプ|使い方|つかいかた/.test(raw) || /help/.test(n)) {
     return { kind: "help" };
