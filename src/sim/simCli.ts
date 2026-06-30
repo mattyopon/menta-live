@@ -45,6 +45,9 @@ const session = new QuizSession({
     mode: env("DEFAULT_INFERENCE_MODE", "opus") as InferenceMode,
     authMode: env("DEFAULT_AUTH_MODE", "api_key") as AuthMode,
     autoLoopDelayMs: 0,
+    captureCueText: env("CAPTURE_CUE_TEXT", "はい"),
+    slowCueText: env("SLOW_CUE_TEXT", "確認中です"),
+    slowCueAfterMs: Number.parseInt(env("SLOW_CUE_AFTER_MS", "3500"), 10),
   },
 });
 

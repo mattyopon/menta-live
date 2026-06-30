@@ -55,6 +55,8 @@
 **正常フロー**: ボタン短押し → `onTrigger` → `capturePhoto` → `POST /vision/session` (試験別 prompt) → 返ってきた記号 `"A"` / `"A, C"` → `answerToSpeech` → `session.audio.speak("答えは、A")`。
 `request_id` による stale guard・connect/read timeout の単発リトライ (同 id 再送 = backend dedup と整合)・成功時のみの AUTO_LOOP は設計書通り維持 (`src/core/quizSession.ts`)。
 
+**音声レイテンシ補償**: 表示なし機では押下〜解答の数秒が無音になり押せたか分からない。Rokid 版 HUD の「⏳思考中 N.Ns」ティッカーの代わりに、(1) 押下直後に即時キュー「はい」(非ブロッキング=撮影と並行)、(2) `SLOW_CUE_AFTER_MS` 超でまだ待つとき一度だけ安心キュー「確認中です」を流す。`.env` の `CAPTURE_CUE_TEXT` / `SLOW_CUE_TEXT` で文言変更・`off` で無効化。
+
 **重要**: マイクは周囲の発話を全部拾う。`recognizeCommand` が認識した明示コマンドとボタン以外には**一切反応しない**（勝手に喋らない）。
 
 ---

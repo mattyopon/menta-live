@@ -18,6 +18,12 @@ export interface AppConfig {
   readonly defaultAuthMode: AuthMode;
   readonly defaultExamCode: string;
   readonly autoLoopDelayMs: number;
+  /** 撮影直後の即時キュー ("" で無効)。表示なし機の押下フィードバック。 */
+  readonly captureCueText: string;
+  /** 推論遅延時の安心キュー ("" で無効)。 */
+  readonly slowCueText: string;
+  /** slowCue を出すまでの待ち (ms, 0 で無効)。 */
+  readonly slowCueAfterMs: number;
   /** TTS の voice_id (任意。日本語に最適化した ElevenLabs voice を使いたい場合)。 */
   readonly ttsVoiceId?: string;
   /** TTS の文字起こし言語 (例 "ja-JP")。onTranscriptionForLanguage に渡す。 */
@@ -58,6 +64,12 @@ export function loadConfig(env: Env = process.env): AppConfig {
   const autoLoopRaw = pick(env, "AUTO_LOOP_DELAY_MS");
   const autoLoop = autoLoopRaw ? Number.parseInt(autoLoopRaw, 10) : 0;
 
+  // キューは "off"/"none" で無効化可能 (空文字でも無効)。
+  const cueOff = (v: string | undefined): boolean => v === "off" || v === "none";
+  const captureCueRaw = env.CAPTURE_CUE_TEXT;
+  const slowCueRaw = env.SLOW_CUE_TEXT;
+  const slowAfter = Number.parseInt(pick(env, "SLOW_CUE_AFTER_MS") ?? "3500", 10);
+
   return {
     packageName: packageName!,
     apiKey: apiKey!,
@@ -67,6 +79,9 @@ export function loadConfig(env: Env = process.env): AppConfig {
     defaultAuthMode: parseAuth(pick(env, "DEFAULT_AUTH_MODE")),
     defaultExamCode: pick(env, "DEFAULT_EXAM_CODE") ?? "SAA",
     autoLoopDelayMs: Number.isFinite(autoLoop) && autoLoop > 0 ? autoLoop : 0,
+    captureCueText: cueOff(captureCueRaw) ? "" : (pick(env, "CAPTURE_CUE_TEXT") ?? "はい"),
+    slowCueText: cueOff(slowCueRaw) ? "" : (pick(env, "SLOW_CUE_TEXT") ?? "確認中です"),
+    slowCueAfterMs: Number.isFinite(slowAfter) && slowAfter > 0 ? slowAfter : 0,
     ttsVoiceId: pick(env, "TTS_VOICE_ID"),
     transcribeLanguage: pick(env, "TRANSCRIBE_LANGUAGE") ?? "ja-JP",
   };

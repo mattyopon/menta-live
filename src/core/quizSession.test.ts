@@ -60,7 +60,8 @@ function mk(camera: Camera, backend: VisionBackend, voice = new RecordingVoice()
     camera,
     voice,
     backend,
-    config: { examCode: "SAA", mode: "haiku", authMode: "api_key", autoLoopDelayMs: 0 },
+    // キューは off (これらのテストはコアフローの spoken 列を厳密検証するため)
+    config: { examCode: "SAA", mode: "haiku", authMode: "api_key", autoLoopDelayMs: 0, slowCueAfterMs: 0 },
     genRequestId: () => `rid-${n++}`,
   });
   return { session, voice };
@@ -111,6 +112,51 @@ test("non-retryable http error speaks once, no retry", async () => {
   await flush();
   assert.equal(backend.calls, 1);
   assert.match(voice.spoken[0] ?? "", /混み合って/);
+});
+
+test("capture cue plays immediately; slow cue fires while waiting; answer follows", async () => {
+  const camera = new StubCamera(() => Promise.resolve(PHOTO));
+  let resolveInfer: (r: VisionResult) => void = () => {};
+  const backend = new StubBackend(() => new Promise<VisionResult>((r) => (resolveInfer = r)));
+  const voice = new RecordingVoice();
+  const timer: { fire: (() => void) | null } = { fire: null };
+  const clock = {
+    setTimeout: (fn: () => void) => {
+      timer.fire = fn;
+      return () => {
+        timer.fire = null;
+      };
+    },
+  };
+  let n = 0;
+  const session = new QuizSession({
+    camera,
+    voice,
+    backend,
+    config: {
+      examCode: "SAA",
+      mode: "haiku",
+      authMode: "api_key",
+      autoLoopDelayMs: 0,
+      captureCueText: "はい",
+      slowCueText: "確認中です",
+      slowCueAfterMs: 3500,
+    },
+    genRequestId: () => `rid-${n++}`,
+    clock,
+  });
+
+  session.onTrigger();
+  await flush(2);
+  assert.ok(voice.spoken.includes("はい"), "capture cue should play immediately");
+  assert.equal(session.getPhase(), "uploading");
+
+  timer.fire?.(); // 遅延タイマ発火を模擬
+  assert.ok(voice.spoken.includes("確認中です"), "slow cue should play while waiting");
+
+  resolveInfer({ requestId: "x", text: "C", elapsedMs: 1, model: "m" });
+  await flush();
+  assert.ok(voice.spoken.includes("答えは、C"), "answer should follow");
 });
 
 test("re-trigger while capturing is ignored", async () => {

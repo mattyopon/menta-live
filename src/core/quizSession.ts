@@ -39,8 +39,18 @@ export interface QuizConfig {
   authMode: AuthMode;
   /** 成功後 N ms で次の撮影を自動発火 (0=手動のみ)。AUTO_LOOP_DELAY_MS 相当。 */
   autoLoopDelayMs: number;
-  /** 撮影〜推論待ちの間に短いキューを読み上げるか (default false)。 */
-  speakThinkingCue?: boolean;
+  /**
+   * 撮影直後に押下を知らせる短いキュー (空/undefined で無効)。
+   * 表示なし機では「押せたか」が分からないので即時フィードバックを返す。非ブロッキングで撮影と並行。
+   */
+  captureCueText?: string;
+  /**
+   * 推論が slowCueAfterMs を超えても返らないとき一度だけ流す安心キュー (空/undefined で無効)。
+   * Rokid 版 HUD の経過秒ティッカー (「⏳思考中 N.Ns」) の音声版。
+   */
+  slowCueText?: string;
+  /** slowCue を出すまでの待ち時間 (ms)。0 で無効。 */
+  slowCueAfterMs?: number;
 }
 
 function isAbortError(e: unknown): boolean {
@@ -180,6 +190,12 @@ export class QuizSession {
   }
 
   private async runFlow(rid: string, signal: AbortSignal): Promise<void> {
+    // 押下の即時フィードバック (非ブロッキング = 撮影と並行)。表示なし機では「効いたか」が
+    // 分からないので重要。interrupt=true で直前に残った音声を切る。
+    if (this.cfg.captureCueText) {
+      void this.voice.speak(this.cfg.captureCueText, { interrupt: true }).catch(() => {});
+    }
+
     // 1) 撮影
     let photo;
     try {
@@ -193,12 +209,26 @@ export class QuizSession {
 
     // 2) 推論
     this.setPhase("uploading");
-    if (this.cfg.speakThinkingCue) {
-      // 待ち時間のキュー。割り込み再生だが完了は待たない (解答で上書きされる)
-      void this.voice.speak("考え中", { interrupt: true }).catch(() => {});
+    // 遅延時の安心キュー: slowCueAfterMs 超でまだ待っていれば一度だけ流す。
+    // stopOtherAudio=false で控えめに鳴らし、解答 (interrupt=true) が来たら止まる。
+    let cancelSlowCue: (() => void) | null = null;
+    const slowText = this.cfg.slowCueText;
+    const slowMs = this.cfg.slowCueAfterMs ?? 0;
+    if (slowText && slowMs > 0) {
+      cancelSlowCue = this.clock.setTimeout(() => {
+        cancelSlowCue = null;
+        if (rid === this.currentRequestId && this.phase === "uploading") {
+          void this.voice.speak(slowText, { interrupt: false }).catch(() => {});
+        }
+      }, slowMs);
     }
 
-    const result = await this.postWithSingleRetry(rid, photo.bytes, photo.mimeType, signal);
+    let result: VisionResult | null;
+    try {
+      result = await this.postWithSingleRetry(rid, photo.bytes, photo.mimeType, signal);
+    } finally {
+      cancelSlowCue?.();
+    }
     if (result === null) return; // エラー読み上げ済み or キャンセル
     if (rid !== this.currentRequestId) return; // stale
 

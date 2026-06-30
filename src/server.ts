@@ -58,6 +58,9 @@ class AwsQuizServer extends AppServer {
         mode: cfg.defaultMode,
         authMode: cfg.defaultAuthMode,
         autoLoopDelayMs: cfg.autoLoopDelayMs,
+        captureCueText: cfg.captureCueText,
+        slowCueText: cfg.slowCueText,
+        slowCueAfterMs: cfg.slowCueAfterMs,
       },
       logger: session.logger,
     });
