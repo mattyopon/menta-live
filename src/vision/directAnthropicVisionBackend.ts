@@ -16,7 +16,7 @@
  * @anthropic-ai/sdk 2.x… 実際は 0.107.0 で型検証。モデル id / 価格は env で上書き可。
  */
 
-import Anthropic, { RateLimitError } from "@anthropic-ai/sdk";
+import Anthropic, { APIUserAbortError, RateLimitError } from "@anthropic-ai/sdk";
 import { modelTier } from "../core/speech.js";
 import type { Logger } from "../io/ports.js";
 import {
@@ -77,6 +77,10 @@ interface UsageSlot {
 }
 
 function isAbortError(e: unknown): boolean {
+  // 呼び出し側 signal で abort されると @anthropic-ai/sdk は APIUserAbortError を投げる
+  // (name は "AbortError" ではない & APIError サブクラス)。これを拾い損ねると
+  // toBackendError 経由で HTTP 502 として読み上げてしまうので明示的に判定する。
+  if (e instanceof APIUserAbortError) return true;
   return e instanceof Error && e.name === "AbortError";
 }
 
