@@ -1,0 +1,27 @@
+{
+  "name": "mentra-aws-quiz",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWS certification exam answer assistant for Mentra Live (audio-only). Port of the Rokid Glasses HUD version to MentraOS, replacing visual HUD with TTS and menu/tap with voice + buttons.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "hello": "tsx watch src/hello/helloServer.ts",
+    "sim": "tsx src/sim/simCli.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@mentra/sdk": "^2.1.29"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}
